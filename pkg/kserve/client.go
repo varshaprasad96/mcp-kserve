@@ -3,11 +3,14 @@ package kserve
 import (
 	"context"
 	"fmt"
+	"os"
+	"path/filepath"
 
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
+	"k8s.io/client-go/tools/clientcmd"
 	servingv1 "knative.dev/serving/pkg/apis/serving/v1"
 	servingclient "knative.dev/serving/pkg/client/clientset/versioned"
 )
@@ -21,9 +24,26 @@ type Client struct {
 
 // NewClient creates a new KServe client
 func NewClient(namespace string) (*Client, error) {
-	config, err := rest.InClusterConfig()
+	var config *rest.Config
+	var err error
+
+	// Try local kubeconfig first for development
+	kubeconfig := os.Getenv("KUBECONFIG")
+	if kubeconfig == "" {
+		home, err := os.UserHomeDir()
+		if err != nil {
+			return nil, fmt.Errorf("failed to get user home dir: %v", err)
+		}
+		kubeconfig = filepath.Join(home, ".kube", "config")
+	}
+
+	config, err = clientcmd.BuildConfigFromFlags("", kubeconfig)
 	if err != nil {
-		return nil, fmt.Errorf("failed to get in-cluster config: %v", err)
+		// Fall back to in-cluster config
+		config, err = rest.InClusterConfig()
+		if err != nil {
+			return nil, fmt.Errorf("failed to get cluster config: %v", err)
+		}
 	}
 
 	k8sClient, err := kubernetes.NewForConfig(config)
